@@ -1,0 +1,40 @@
+# Dependencies and build artifacts
+node_modules
+dist
+
+# Environment files (secrets must be passed via --env-file or docker-compose env)
+.env
+.env.*
+!.env.example
+
+# Version control
+.git
+.gitignore
+
+# Editor and OS metadata
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test and CI artifacts
+coverage
+.nyc_output
+
+# Docker files (no need to copy into themselves)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Temporary files
+tmp
+.tmp

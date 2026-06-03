@@ -1,0 +1,6 @@
+{
+  "name": "Geospatial Mapper",
+  "description": "Geospatial visualization tool for SHP, CSV, and GeoJSON with high-resolution printing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

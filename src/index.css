@@ -1,0 +1,274 @@
+@import "tailwindcss";
+
+@theme {
+  /* Stitch Design Tokens - Material Design 3 Palette */
+  --color-primary: #004ac6;
+  --color-primary-container: #2563eb;
+  --color-on-primary: #ffffff;
+  --color-on-primary-container: #eeefff;
+  --color-inverse-primary: #b4c5ff;
+  
+  --color-secondary: #575f6a;
+  --color-secondary-container: #dbe3f0;
+  --color-on-secondary: #ffffff;
+  --color-on-secondary-container: #5d6570;
+  
+  --color-tertiary: #943700;
+  --color-tertiary-container: #bc4800;
+  --color-on-tertiary: #ffffff;
+  --color-on-tertiary-container: #ffede6;
+  
+  --color-background: #faf8ff;
+  --color-on-background: #191b23;
+  
+  --color-surface: #faf8ff;
+  --color-surface-dim: #d9d9e5;
+  --color-surface-bright: #faf8ff;
+  --color-surface-variant: #e1e2ed;
+  --color-on-surface: #191b23;
+  --color-on-surface-variant: #434655;
+  --color-inverse-surface: #2e3039;
+  --color-inverse-on-surface: #f0f0fb;
+  
+  --color-outline: #737686;
+  --color-outline-variant: #c3c6d7;
+  --color-surface-tint: #0053db;
+  
+  --color-error: #ba1a1a;
+  --color-error-container: #ffdad6;
+  --color-on-error: #ffffff;
+  --color-on-error-container: #93000a;
+  
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f3f3fe;
+  --color-surface-container: #ededf9;
+  --color-surface-container-high: #e7e7f3;
+  --color-surface-container-highest: #e1e2ed;
+
+  /* Additional Fixed Color Tokens */
+  --color-primary-fixed: #dbe1ff;
+  --color-primary-fixed-dim: #b4c5ff;
+  --color-on-primary-fixed: #00174b;
+  --color-on-primary-fixed-variant: #003ea8;
+  --color-secondary-fixed: #dbe3f0;
+  --color-secondary-fixed-dim: #bfc7d4;
+  --color-on-secondary-fixed: #141c25;
+  --color-on-secondary-fixed-variant: #3f4752;
+  --color-tertiary-fixed: #ffdbcd;
+  --color-tertiary-fixed-dim: #ffb596;
+  --color-on-tertiary-fixed: #360f00;
+  --color-on-tertiary-fixed-variant: #7d2d00;
+
+  /* Corner Radius Scale */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+
+  /* Spacing / Layout Constants */
+  --spacing-panel-width: 360px;
+  --spacing-gutter: 16px;
+  --spacing-margin-page: 24px;
+  --spacing-stack-gap: 8px;
+  --spacing-control-gap: 12px;
+}
+
+/* Base Styles */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: var(--color-background);
+  color: var(--color-on-background);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+}
+
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  background-color: var(--color-surface-dim);
+}
+
+/* Material Symbols Setup */
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Stitch Typography Classes */
+.text-display-title {
+  font-family: 'Inter', sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 28px;
+  letter-spacing: -0.02em;
+}
+
+.text-section-header {
+  font-family: 'Inter', sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+  letter-spacing: -0.01em;
+}
+
+.text-body-main {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+}
+
+.text-body-sm {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.text-label-caps {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* Custom Scrollbar */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Leaflet Overrides to match Stitch Aesthetics */
+.leaflet-bar {
+  border: 1px solid var(--color-outline-variant) !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important;
+  border-radius: var(--radius-md) !important;
+  overflow: hidden;
+}
+.leaflet-bar a {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  backdrop-filter: blur(8px);
+  color: var(--color-on-surface) !important;
+  border-bottom: 1px solid var(--color-outline-variant) !important;
+  transition: all 0.2s;
+}
+.leaflet-bar a:hover {
+  background-color: var(--color-surface-container-high) !important;
+}
+
+.leaflet-popup-content-wrapper {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--color-outline-variant) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important;
+  color: var(--color-on-surface) !important;
+}
+.leaflet-popup-tip {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  border-left: 1px solid var(--color-outline-variant);
+  border-bottom: 1px solid var(--color-outline-variant);
+}
+
+/* Custom Scale Control Styling */
+.leaflet-control-scale {
+  margin-bottom: 24px !important;
+  margin-right: 180px !important; /* avoid overlapping Zoom controls and sponsor logo on bottomright */
+}
+.leaflet-control-scale-line {
+  background: rgba(255, 255, 255, 0.9) !important;
+  backdrop-filter: blur(8px);
+  border: 1.5px solid var(--color-outline) !important;
+  border-top: none !important;
+  color: var(--color-on-surface) !important;
+  font-family: 'Inter', sans-serif !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  padding: 2px 6px !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  border-radius: 0 0 4px 4px;
+}
+
+/* Custom position of Layers Control to stack directly above zoom controls */
+.leaflet-bottom.leaflet-right .leaflet-control-layers {
+  margin-bottom: 162px !important;
+  margin-right: 24px !important;
+  border: 1px solid var(--color-outline-variant) !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important;
+  border-radius: var(--radius-md) !important;
+}
+
+/* Print UI Adjustments */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
+
+/* Responsive Sidebar / Bottom Sheet */
+.sidebar-responsive {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+              width 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+              opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              margin 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.3s ease;
+}
+
+@media (min-width: 768px) {
+  .sidebar-responsive {
+    width: var(--spacing-panel-width);
+    height: 100%;
+    transform: translateX(0);
+    opacity: 1;
+  }
+  .sidebar-responsive.sidebar-hidden {
+    width: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none;
+    transform: translateX(-100%) !important;
+    border-right-width: 0 !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .sidebar-responsive {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100vw !important;
+    height: 55vh !important;
+    border-top: 1px solid var(--color-outline-variant) !important;
+    border-right-width: 0 !important;
+    border-top-left-radius: var(--radius-xl) !important;
+    border-top-right-radius: var(--radius-xl) !important;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.12) !important;
+    z-index: 1500 !important;
+    transform: translateY(0) !important;
+  }
+  .sidebar-responsive.sidebar-hidden {
+    transform: translateY(100%) !important;
+    opacity: 0 !important;
+    pointer-events: none;
+  }
+}
+

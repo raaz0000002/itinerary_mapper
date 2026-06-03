@@ -1,0 +1,23 @@
+services:
+  geoai-mapper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: geoai-mapper:latest
+    container_name: geoai-mapper
+    restart: unless-stopped
+
+    ports:
+      - "3010:3010"
+
+    environment:
+      - NODE_ENV=production
+      - PORT=3010
+
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://127.0.0.1:3010/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
