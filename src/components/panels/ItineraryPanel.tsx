@@ -7,7 +7,7 @@ export interface ItineraryItem {
   name: string;
   lat: number;
   lng: number;
-  type: 'hotel' | 'food' | 'view' | 'point' | 'bed' | 'playground' | 'hiking' | 'shopping';
+  type: 'hotel' | 'food' | 'view' | 'point' | 'plane' | 'playground' | 'hiking' | 'shopping';
   distance?: number;
   elevation?: number;
   duration?: number;
@@ -20,11 +20,13 @@ interface ItineraryPanelProps {
   setSelectedDay: (day: number) => void;
   saveHistory: () => void;
   isReadOnly?: boolean;
+  startDate?: string;
+  setStartDate?: (date: string) => void;
 }
 
 // Haversine formula to compute distance in km
 export function calculateHaversineDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371; // Earth radius in km
+  const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
@@ -37,6 +39,17 @@ export function calculateHaversineDistance(lat1: number, lon1: number, lat2: num
   return R * c;
 }
 
+const getDayDate = (startDate: string | undefined, day: number): string | null => {
+  if (!startDate) return null;
+  try {
+    const date = new Date(startDate);
+    date.setDate(date.getDate() + day - 1);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  } catch {
+    return null;
+  }
+};
+
 export default function ItineraryPanel({
   itinerary,
   setItinerary,
@@ -44,26 +57,34 @@ export default function ItineraryPanel({
   setSelectedDay,
   saveHistory,
   isReadOnly = false,
+  startDate,
+  setStartDate,
 }: ItineraryPanelProps) {
   const activeDayStops = itinerary.filter((item) => item.day === selectedDay);
 
-  // Compute stats by summing up specified fields for the active day
   let totalDistanceKm = 0;
-  let totalElevationMeters = 0;
   let totalDurationHours = 0;
+  let sumElevationMeters = 0;
+  let stopsWithElevationCount = 0;
 
   activeDayStops.forEach((item) => {
     totalDistanceKm += item.distance !== undefined ? Number(item.distance) : 0;
-    totalElevationMeters += item.elevation !== undefined ? Number(item.elevation) : 0;
     totalDurationHours += item.duration !== undefined ? Number(item.duration) : 0;
+    if (item.elevation !== undefined) {
+      sumElevationMeters += Number(item.elevation);
+      stopsWithElevationCount++;
+    }
   });
 
-  const elevationGainMeters = totalElevationMeters;
+  const avgElevationMeters = stopsWithElevationCount > 0 
+    ? Math.round(sumElevationMeters / stopsWithElevationCount) 
+    : 0;
+
   const estTimeHrs = totalDurationHours.toFixed(1);
 
   const stopTypes = [
     { type: 'hotel', icon: 'hotel', tooltip: 'Lodging' },
-    { type: 'bed', icon: 'bed', tooltip: 'Bed/Rest' },
+    { type: 'plane', icon: 'flight', tooltip: 'Flight' },
     { type: 'playground', icon: 'child_care', tooltip: 'Playground' },
     { type: 'food', icon: 'restaurant', tooltip: 'Dining' },
     { type: 'view', icon: 'photo_camera', tooltip: 'Sightseeing' },
@@ -74,26 +95,68 @@ export default function ItineraryPanel({
 
   return (
     <div className="p-4 space-y-5 flex-1 flex flex-col min-h-0 overflow-y-auto">
-      {/* 1. Day Selector */}
+
+      {/* Start Date Picker */}
+      <div className="space-y-1.5 shrink-0">
+        <span className="text-label-caps text-on-surface-variant font-semibold tracking-wider">Trip Start Date</span>
+        {isReadOnly ? (
+          startDate ? (
+            <div className="flex items-center gap-2 px-3 py-2 bg-surface-container-low border border-outline-variant rounded-lg">
+              <Icon name="calendar_month" className="text-base text-primary" />
+              <span className="text-body-sm font-semibold text-on-surface">
+                {new Date(startDate).toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'long', day: 'numeric' })}
+              </span>
+            </div>
+          ) : (
+            <span className="text-body-sm text-on-surface-variant italic">No start date set</span>
+          )
+        ) : (
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={startDate || ''}
+              onChange={(e) => setStartDate && setStartDate(e.target.value)}
+              className="flex-1 px-3 py-1.5 bg-surface-container-low border border-outline-variant rounded-lg focus:outline-none focus:border-primary text-body-sm text-on-surface"
+            />
+            {startDate && (
+              <button
+                onClick={() => setStartDate && setStartDate('')}
+                className="p-1.5 text-on-surface-variant hover:text-error rounded transition"
+                title="Clear date"
+              >
+                <Icon name="close" className="text-base" />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Day Selector */}
       <div className="space-y-2 shrink-0">
         <span className="text-label-caps text-on-surface-variant font-semibold tracking-wider">Plan Duration (Days)</span>
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-          {[1, 2, 3, 4, 5, 6, 7].map((day) => {
+        <div className="flex flex-wrap gap-2 pb-1">
+          {Array.from({ length: 15 }, (_, i) => i + 1).map((day) => {
             const hasStops = itinerary.some((item) => item.day === day);
             const isSelected = selectedDay === day;
+            const dayDate = getDayDate(startDate, day);
             return (
               <button
                 key={day}
                 onClick={() => setSelectedDay(day)}
-                className={`relative flex-shrink-0 w-10 h-10 rounded-full font-semibold transition flex items-center justify-center ${
+                className={`relative flex-shrink-0 flex flex-col items-center justify-center rounded-lg font-semibold transition px-2 py-1.5 min-w-[44px] ${
                   isSelected
                     ? 'bg-primary text-on-primary shadow-md'
                     : 'bg-surface-container text-on-surface hover:bg-surface-container-high border border-outline-variant/30'
                 }`}
               >
-                <span>{day}</span>
+                <span className="text-sm font-bold">{day}</span>
+                {dayDate && (
+                  <span className={`text-[9px] leading-none mt-0.5 ${isSelected ? 'text-on-primary/80' : 'text-on-surface-variant'}`}>
+                    {dayDate}
+                  </span>
+                )}
                 {hasStops && !isSelected && (
-                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-primary" />
+                  <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-primary" />
                 )}
               </button>
             );
@@ -101,10 +164,13 @@ export default function ItineraryPanel({
         </div>
       </div>
 
-      {/* 2. Trek Duration Stats Card */}
+      {/* Day Summary Stats */}
       <div className="p-4 bg-surface-container-low border border-outline-variant rounded-xl space-y-3 shrink-0">
         <div>
-          <span className="text-label-caps text-primary font-bold">Day {selectedDay} Summary</span>
+          <span className="text-label-caps text-primary font-bold">
+            Day {selectedDay}
+            {getDayDate(startDate, selectedDay) ? ` · ${getDayDate(startDate, selectedDay)}` : ''} Summary
+          </span>
           <h3 className="text-section-header text-on-surface mt-0.5">Route Statistics</h3>
         </div>
 
@@ -121,7 +187,7 @@ export default function ItineraryPanel({
             <Icon name="filter_hdr" className="text-xl text-tertiary" />
             <span className="text-label-caps text-on-surface-variant mt-1">Elevation</span>
             <span className="text-body-sm font-bold text-on-surface mt-0.5">
-              {elevationGainMeters > 0 ? `+${elevationGainMeters} m` : '0 m'}
+              {avgElevationMeters > 0 ? `${avgElevationMeters} m` : '0 m'}
             </span>
           </div>
 
@@ -135,7 +201,7 @@ export default function ItineraryPanel({
         </div>
       </div>
 
-      {/* 3. Day List & Timeline */}
+      {/* Stops List */}
       <div className="flex-1 flex flex-col min-h-0">
         <div className="flex items-center justify-between pb-2 shrink-0">
           <span className="text-label-caps text-on-surface-variant font-semibold tracking-wider">Itinerary Stops</span>
@@ -143,7 +209,7 @@ export default function ItineraryPanel({
             <button
               onClick={() => {
                 saveHistory();
-                setItinerary(itinerary.filter((it) => it.day !== selectedDay));
+                setItinerary(prev => prev.filter((it) => it.day !== selectedDay));
               }}
               className="text-body-sm font-semibold text-error hover:text-error-container transition"
             >
@@ -166,10 +232,9 @@ export default function ItineraryPanel({
           </div>
         ) : (
           <div className="flex-1 overflow-y-auto pr-1 space-y-4 relative pl-3">
-            {/* Travel Timeline Dashed Connector Line */}
             {activeDayStops.length > 1 && (
-              <div 
-                className="absolute left-6 top-8 bottom-8 w-0.5 border-l-2 border-dashed border-primary/40 z-0 pointer-events-none"
+              <div
+                className="absolute left-6 w-0.5 border-l-2 border-dashed border-primary/40 z-0 pointer-events-none"
                 style={{ top: '32px', bottom: '32px' }}
               />
             )}
@@ -177,14 +242,9 @@ export default function ItineraryPanel({
             {activeDayStops.map((item, index) => {
               const isStart = index === 0;
               const isEnd = index === activeDayStops.length - 1;
-              
-              // Marker styling matching Stitch design system specifications:
-              // - Start/End: Primary blue solid circles
-              // - Waypoint/Others: White circles with border
-              let markerStyle = "bg-surface border-2 border-primary text-primary";
-              if (isStart || isEnd) {
-                markerStyle = "bg-primary text-on-primary";
-              }
+              const markerStyle = (isStart || isEnd)
+                ? 'bg-primary text-on-primary'
+                : 'bg-surface border-2 border-primary text-primary';
 
               return (
                 <div key={item.id} className="relative z-10 flex gap-4">
@@ -195,7 +255,7 @@ export default function ItineraryPanel({
                     </div>
                   </div>
 
-                  {/* Stop Information Card */}
+                  {/* Stop Card */}
                   <div className="flex-1 p-3 bg-surface-container-lowest border border-outline-variant rounded-xl space-y-2 shadow-sm">
                     <div className="flex items-center gap-2">
                       {isReadOnly ? (
@@ -206,23 +266,24 @@ export default function ItineraryPanel({
                         <input
                           value={item.name}
                           onFocus={saveHistory}
-                          onChange={(e) =>
-                            setItinerary(
-                              itinerary.map((it) => (it.id === item.id ? { ...it, name: e.target.value } : it))
-                            )
-                          }
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setItinerary(prev => prev.map((it) => it.id === item.id ? { ...it, name: val } : it));
+                          }}
                           className="flex-grow text-body-main font-semibold bg-transparent border-none p-0 focus:ring-0 text-on-surface outline-none w-full"
                           placeholder="Location Name"
                         />
                       )}
                       {!isReadOnly && (
                         <button
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             saveHistory();
-                            setItinerary(itinerary.filter((it) => it.id !== item.id));
+                            setItinerary(prev => prev.filter((it) => it.id !== item.id));
                           }}
                           className="p-1 text-on-surface-variant hover:text-error rounded transition shrink-0"
                           title="Delete stop"
+                          type="button"
                         >
                           <Icon name="delete" className="text-lg" />
                         </button>
@@ -234,7 +295,6 @@ export default function ItineraryPanel({
                         {item.lat.toFixed(4)}°, {item.lng.toFixed(4)}°
                       </span>
 
-                      {/* Compact inputs/labels for Distance, Elevation, Duration */}
                       <div className="grid grid-cols-3 gap-2 pt-2 border-t border-outline-variant/30">
                         <div className="flex flex-col">
                           <label className="text-[9px] text-on-surface-variant/80 font-bold uppercase tracking-wider">Dist (km)</label>
@@ -250,10 +310,10 @@ export default function ItineraryPanel({
                               onFocus={saveHistory}
                               onChange={(e) => {
                                 const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
-                                setItinerary(itinerary.map(it => it.id === item.id ? { ...it, distance: val } : it));
+                                setItinerary(prev => prev.map(it => it.id === item.id ? { ...it, distance: val } : it));
                               }}
                               className="mt-0.5 bg-surface-container/60 rounded px-1.5 py-0.5 border border-outline-variant/40 focus:outline-none focus:border-primary text-[11px] font-semibold text-on-surface"
-                              placeholder={index === 0 ? "0.0" : (() => {
+                              placeholder={index === 0 ? '0.0' : (() => {
                                 const prev = activeDayStops[index - 1];
                                 return calculateHaversineDistance(prev.lat, prev.lng, item.lat, item.lng).toFixed(1);
                               })()}
@@ -273,7 +333,7 @@ export default function ItineraryPanel({
                               onFocus={saveHistory}
                               onChange={(e) => {
                                 const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
-                                setItinerary(itinerary.map(it => it.id === item.id ? { ...it, elevation: val } : it));
+                                setItinerary(prev => prev.map(it => it.id === item.id ? { ...it, elevation: val } : it));
                               }}
                               className="mt-0.5 bg-surface-container/60 rounded px-1.5 py-0.5 border border-outline-variant/40 focus:outline-none focus:border-primary text-[11px] font-semibold text-on-surface"
                               placeholder="0"
@@ -294,7 +354,7 @@ export default function ItineraryPanel({
                               onFocus={saveHistory}
                               onChange={(e) => {
                                 const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
-                                setItinerary(itinerary.map(it => it.id === item.id ? { ...it, duration: val } : it));
+                                setItinerary(prev => prev.map(it => it.id === item.id ? { ...it, duration: val } : it));
                               }}
                               className="mt-0.5 bg-surface-container/60 rounded px-1.5 py-0.5 border border-outline-variant/40 focus:outline-none focus:border-primary text-[11px] font-semibold text-on-surface"
                               placeholder="0.0"
@@ -303,7 +363,7 @@ export default function ItineraryPanel({
                         </div>
                       </div>
 
-                      {/* Stop Type Selection / Badge Display */}
+                      {/* Symbol picker / badge */}
                       {isReadOnly ? (
                         <div className="flex items-center gap-1 mt-2 text-on-surface-variant bg-surface-container/40 px-2 py-0.5 rounded-full w-max text-[10px] font-semibold border border-outline-variant/20">
                           <Icon name={stopTypes.find(btn => btn.type === item.type)?.icon || 'location_on'} className="text-[12px] text-primary" />
@@ -319,9 +379,7 @@ export default function ItineraryPanel({
                                 type="button"
                                 onClick={() => {
                                   saveHistory();
-                                  setItinerary(
-                                    itinerary.map((it) => (it.id === item.id ? { ...it, type: btn.type as any } : it))
-                                  );
+                                  setItinerary(prev => prev.map((it) => it.id === item.id ? { ...it, type: btn.type as ItineraryItem['type'] } : it));
                                 }}
                                 className={`p-1 rounded flex items-center justify-center transition ${
                                   item.type === btn.type
@@ -330,10 +388,7 @@ export default function ItineraryPanel({
                                 }`}
                                 title={btn.tooltip}
                               >
-                                <Icon 
-                                  name={btn.icon} 
-                                  className="text-[16px]" 
-                                />
+                                <Icon name={btn.icon} className="text-[16px]" />
                               </button>
                             ))}
                           </div>

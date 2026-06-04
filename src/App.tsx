@@ -129,6 +129,7 @@ export default function App() {
   // Search & Itinerary
   const [itinerary, setItinerary] = useState<ItineraryItem[]>([]);
   const [selectedDay, setSelectedDay] = useState(1);
+  const [startDate, setStartDate] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -157,6 +158,7 @@ export default function App() {
           if (decoded.titleSize) setTitleSize(decoded.titleSize);
           if (decoded.titleStyle) setTitleStyle(decoded.titleStyle);
           if (decoded.itinerary) setItinerary(decoded.itinerary);
+          if (decoded.startDate) setStartDate(decoded.startDate);
           if (decoded.layers) setLayers(decoded.layers);
           if (decoded.center && typeof decoded.zoom === 'number') {
             setMapCenterData({
@@ -208,6 +210,7 @@ export default function App() {
         titleColor,
         titleStyle,
         titleSize,
+        startDate: startDate || undefined,
         itinerary: itinerary.map(item => ({
           day: item.day,
           name: item.name,
@@ -602,26 +605,27 @@ export default function App() {
     setTimeout(async () => {
       let restoreTransforms: (() => void) | null = null;
       try {
+        // Wait for web fonts (Inter, Material Symbols) to finish loading before capture
+        await document.fonts.ready;
+
         restoreTransforms = transformToOffset();
-        
+
         const canvas = await html2canvas(printAreaRef.current!, {
           useCORS: true,
           scale: scaleFactor,
-          logging: true,
+          logging: false,
           backgroundColor: '#ffffff',
           ignoreElements: (el) => el.classList.contains('no-print') || el.classList.contains('leaflet-control-layers')
         });
-        
+
         const imgData = canvas.toDataURL('image/jpeg', 0.95);
         const { w, h } = PAPER_SIZES[printConfig.size];
         const orientation = printConfig.orientation === 'portrait' ? 'p' : 'l';
-        
+
         const pdfW = orientation === 'p' ? w : h;
         const pdfH = orientation === 'p' ? h : w;
-        
-        // Pass page size in correct width/height order to avoid layout bugs
+
         const pdf = new jsPDF(orientation, 'mm', [pdfW, pdfH]);
-        
         pdf.addImage(imgData, 'JPEG', 0, 0, pdfW, pdfH);
         pdf.save(`${mapTitle.replace(/\s+/g, '_')}_${printConfig.size}.pdf`);
       } catch (err) {
@@ -650,16 +654,18 @@ export default function App() {
     setTimeout(async () => {
       let restoreTransforms: (() => void) | null = null;
       try {
+        await document.fonts.ready;
+
         restoreTransforms = transformToOffset();
-        
+
         const canvas = await html2canvas(printAreaRef.current!, {
           useCORS: true,
-          scale: 1, 
-          logging: true,
+          scale: 1,
+          logging: false,
           backgroundColor: '#ffffff',
           ignoreElements: (el) => el.classList.contains('no-print') || el.classList.contains('leaflet-control-layers')
         });
-        
+
         setPreviewUrl(canvas.toDataURL('image/png'));
         setIsPreviewing(true);
       } catch (err) {
@@ -690,14 +696,12 @@ export default function App() {
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-background font-sans text-on-background">
       {/* Top Navigation Bar */}
-      <TopNavBar 
-        mapTitle={mapTitle} 
-        isPrinting={isPrinting} 
-        onExport={handlePrint} 
+      <TopNavBar
+        mapTitle={mapTitle}
+        isPrinting={isPrinting}
+        onExport={handlePrint}
         isReadOnly={isReadOnly}
         onShare={generateShareLink}
-        showSidebar={showSidebar}
-        onToggleSidebar={() => setShowSidebar(prev => !prev)}
       />
 
       <div className="flex flex-1 h-full min-h-0 relative">
@@ -750,6 +754,8 @@ export default function App() {
                 setSelectedDay={setSelectedDay}
                 saveHistory={() => saveItineraryState(itinerary)}
                 isReadOnly={isReadOnly}
+                startDate={startDate}
+                setStartDate={setStartDate}
               />
             }
             printPanelContent={
@@ -767,8 +773,24 @@ export default function App() {
           />
         )}
 
+        {/* Sidebar toggle tab — floats at the sidebar's right edge, slides with it */}
+        {!isReadOnly && (
+          <button
+            onClick={() => setShowSidebar(prev => !prev)}
+            className="hidden md:flex no-print absolute top-1/2 -translate-y-1/2 z-[1100] items-center justify-center w-5 h-14 bg-surface border border-outline-variant shadow-md rounded-r-lg text-on-surface-variant hover:bg-surface-container-high transition-colors"
+            style={{
+              left: showSidebar ? '360px' : '0px',
+              transition: 'left 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              borderLeft: 'none'
+            }}
+            title={showSidebar ? 'Hide Sidebar' : 'Show Sidebar'}
+          >
+            <Icon name={showSidebar ? 'chevron_left' : 'chevron_right'} className="text-base" />
+          </button>
+        )}
+
         {/* Map Rendering Pane */}
-        <main 
+        <main
           className="flex-1 h-full relative" 
           ref={printAreaRef}
           style={isPrinting ? {
@@ -804,6 +826,7 @@ export default function App() {
             titleStyle={titleStyle}
             showSidebar={showSidebar}
             setShowSidebar={setShowSidebar}
+            startDate={startDate}
           />
         </main>
 
@@ -833,35 +856,35 @@ export default function App() {
               className="absolute inset-0 z-[3000] bg-inverse-surface/40 backdrop-blur-md flex items-center justify-center p-8 no-print"
               onClick={() => setIsPreviewing(false)}
             >
-              <motion.div 
+              <motion.div
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.9, opacity: 0 }}
-                className="bg-surface rounded-xl shadow-2xl overflow-hidden max-w-5xl w-full flex flex-col items-center border border-outline-variant"
+                className="bg-surface rounded-xl shadow-2xl max-h-[92vh] max-w-5xl w-full flex flex-col border border-outline-variant"
                 onClick={e => e.stopPropagation()}
               >
-                <div className="w-full p-6 border-b border-outline-variant flex items-center justify-between bg-surface sticky top-0">
+                <div className="w-full p-6 border-b border-outline-variant flex items-center justify-between bg-surface shrink-0">
                   <div>
                     <h3 className="text-section-header text-on-surface">Print Preview</h3>
                     <p className="text-body-sm text-on-surface-variant">{printConfig.size} ({printConfig.orientation})</p>
                   </div>
-                  <button 
+                  <button
                     onClick={() => setIsPreviewing(false)}
                     className="p-2 hover:bg-surface-container-high rounded-full transition"
                   >
                     <Icon name="close" className="text-xl text-on-surface-variant" />
                   </button>
                 </div>
-                
-                <div className="flex-1 overflow-auto p-8 bg-surface-container w-full flex justify-center items-center">
-                  <div 
+
+                <div className="flex-1 overflow-auto p-6 bg-surface-container w-full flex justify-center items-start">
+                  <div
                     className="bg-surface shadow-2xl relative border border-outline-variant"
-                    style={{ 
-                      aspectRatio: printConfig.orientation === 'portrait' 
-                        ? `${PAPER_SIZES[printConfig.size].w} / ${PAPER_SIZES[printConfig.size].h}` 
+                    style={{
+                      aspectRatio: printConfig.orientation === 'portrait'
+                        ? `${PAPER_SIZES[printConfig.size].w} / ${PAPER_SIZES[printConfig.size].h}`
                         : `${PAPER_SIZES[printConfig.size].h} / ${PAPER_SIZES[printConfig.size].w}`,
-                      maxHeight: '70vh',
-                      width: 'auto'
+                      width: '100%',
+                      maxWidth: '900px'
                     }}
                   >
                     <img src={previewUrl} alt="Map Preview" className="w-full h-full object-contain" />

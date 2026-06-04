@@ -44,78 +44,80 @@ export default function SideNavBar({
           </button>
         </div>
       )}
-      
-      {/* 1. Map Setup Collapsible Accordion */}
-      <div className="border-b border-outline-variant flex flex-col min-h-0">
-        <button
-          onClick={() => setIsMapSetupExpanded(!isMapSetupExpanded)}
-          className="w-full flex items-center justify-between px-4 py-3 bg-surface-container-low hover:bg-surface-container transition text-left"
-        >
-          <div className="flex items-center gap-2.5">
-            <Icon name="settings_input_component" className="text-lg text-primary" />
-            <span className="text-section-header text-on-surface font-semibold">Map Setup</span>
-          </div>
-          <Icon 
-            name={isMapSetupExpanded ? "expand_less" : "expand_more"} 
-            className="text-on-surface-variant transition-transform" 
-          />
-        </button>
-        {isMapSetupExpanded && (
-          <div className="max-h-[35vh] overflow-y-auto border-t border-outline-variant/30 flex flex-col">
-            {layersPanelContent}
-          </div>
-        )}
-      </div>
 
-      {/* 2. Day Planner Collapsible Accordion */}
-      <div className="border-b border-outline-variant flex flex-col min-h-0">
-        <button
-          onClick={() => setIsDayPlannerExpanded(!isDayPlannerExpanded)}
-          className="w-full flex items-center justify-between px-4 py-3 bg-surface-container-low hover:bg-surface-container transition text-left"
-        >
-          <div className="flex items-center gap-2.5">
-            <Icon name="calendar_today" className="text-lg text-primary" />
-            <span className="text-section-header text-on-surface font-semibold">Day Planner</span>
-            {itineraryLength > 0 && (
-              <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-primary text-on-primary">
-                {itineraryLength}
-              </span>
-            )}
-          </div>
-          <Icon 
-            name={isDayPlannerExpanded ? "expand_less" : "expand_more"} 
-            className="text-on-surface-variant transition-transform" 
-          />
-        </button>
-        {isDayPlannerExpanded && (
-          <div className="max-h-[35vh] overflow-y-auto border-t border-outline-variant/30 flex flex-col">
-            {itineraryPanelContent}
-          </div>
-        )}
-      </div>
+      {/* All accordion sections in a single scrollable container */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {/* 1. Map Setup Collapsible Accordion */}
+        <div className="border-b border-outline-variant">
+          <button
+            onClick={() => setIsMapSetupExpanded(!isMapSetupExpanded)}
+            className="w-full flex items-center justify-between px-4 py-3 bg-surface-container-low hover:bg-surface-container transition text-left"
+          >
+            <div className="flex items-center gap-2.5">
+              <Icon name="settings_input_component" className="text-lg text-primary" />
+              <span className="text-section-header text-on-surface font-semibold">Map Setup</span>
+            </div>
+            <Icon
+              name={isMapSetupExpanded ? "expand_less" : "expand_more"}
+              className="text-on-surface-variant transition-transform"
+            />
+          </button>
+          {isMapSetupExpanded && (
+            <div className="border-t border-outline-variant/30">
+              {layersPanelContent}
+            </div>
+          )}
+        </div>
 
-      {/* 3. Print & Export Collapsible Accordion */}
-      <div className="border-b border-outline-variant flex flex-col min-h-0">
-        <button
-          onClick={() => setIsPrintExpanded(!isPrintExpanded)}
-          className="w-full flex items-center justify-between px-4 py-3 bg-surface-container-low hover:bg-surface-container transition text-left"
-        >
-          <div className="flex items-center gap-2.5">
-            <Icon name="print" className="text-lg text-primary" />
-            <span className="text-section-header text-on-surface font-semibold">Print & Export</span>
-          </div>
-          <Icon 
-            name={isPrintExpanded ? "expand_less" : "expand_more"} 
-            className="text-on-surface-variant transition-transform" 
-          />
-        </button>
-        {isPrintExpanded && (
-          <div className="max-h-[35vh] overflow-y-auto border-t border-outline-variant/30 flex flex-col">
-            {printPanelContent}
-          </div>
-        )}
-      </div>
+        {/* 2. Day Planner Collapsible Accordion */}
+        <div className="border-b border-outline-variant">
+          <button
+            onClick={() => setIsDayPlannerExpanded(!isDayPlannerExpanded)}
+            className="w-full flex items-center justify-between px-4 py-3 bg-surface-container-low hover:bg-surface-container transition text-left"
+          >
+            <div className="flex items-center gap-2.5">
+              <Icon name="calendar_today" className="text-lg text-primary" />
+              <span className="text-section-header text-on-surface font-semibold">Day Planner</span>
+              {itineraryLength > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-primary text-on-primary">
+                  {itineraryLength}
+                </span>
+              )}
+            </div>
+            <Icon
+              name={isDayPlannerExpanded ? "expand_less" : "expand_more"}
+              className="text-on-surface-variant transition-transform"
+            />
+          </button>
+          {isDayPlannerExpanded && (
+            <div className="border-t border-outline-variant/30">
+              {itineraryPanelContent}
+            </div>
+          )}
+        </div>
 
+        {/* 3. Print & Export Collapsible Accordion */}
+        <div className="border-b border-outline-variant">
+          <button
+            onClick={() => setIsPrintExpanded(!isPrintExpanded)}
+            className="w-full flex items-center justify-between px-4 py-3 bg-surface-container-low hover:bg-surface-container transition text-left"
+          >
+            <div className="flex items-center gap-2.5">
+              <Icon name="print" className="text-lg text-primary" />
+              <span className="text-section-header text-on-surface font-semibold">Print & Export</span>
+            </div>
+            <Icon
+              name={isPrintExpanded ? "expand_less" : "expand_more"}
+              className="text-on-surface-variant transition-transform"
+            />
+          </button>
+          {isPrintExpanded && (
+            <div className="border-t border-outline-variant/30">
+              {printPanelContent}
+            </div>
+          )}
+        </div>
+      </div>
     </aside>
   );
 }

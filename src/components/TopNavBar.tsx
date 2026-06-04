@@ -1,3 +1,5 @@
+// @ts-ignore
+import compassImg from '../public/illustration-compass_53876-18111-removebg-preview.png';
 import Icon from './Icon';
 
 interface TopNavBarProps {
@@ -6,39 +8,25 @@ interface TopNavBarProps {
   onExport: () => void;
   isReadOnly?: boolean;
   onShare?: () => void;
-  showSidebar?: boolean;
-  onToggleSidebar?: () => void;
 }
 
-export default function TopNavBar({ 
-  mapTitle, 
-  isPrinting, 
-  onExport, 
-  isReadOnly = false, 
-  onShare,
-  showSidebar = true,
-  onToggleSidebar
+export default function TopNavBar({
+  mapTitle,
+  isPrinting,
+  onExport,
+  isReadOnly = false,
+  onShare
 }: TopNavBarProps) {
   return (
     <header className="h-16 shrink-0 flex items-center justify-between px-6 border-b border-outline-variant bg-surface select-none no-print">
-      {/* Left side: App Logo, Title and Drawer Toggle */}
+      {/* Left side: App Logo and Title */}
       <div className="flex items-center gap-3">
-        {!isReadOnly && onToggleSidebar && (
-          <button 
-            onClick={onToggleSidebar}
-            className="p-2 hover:bg-surface-container-high rounded-md transition text-on-surface-variant hover:text-on-surface mr-1"
-            title={showSidebar ? "Hide Sidebar" : "Show Sidebar"}
-          >
-            <Icon name={showSidebar ? "menu_open" : "menu"} className="text-xl" />
-          </button>
-        )}
-        
-        <a 
+        <a
           href={isReadOnly ? (window.location.origin + window.location.pathname) : undefined}
           className={`flex items-center gap-3 ${isReadOnly ? 'hover:opacity-85 cursor-pointer transition' : ''}`}
         >
-          <div className="flex items-center justify-center w-9 h-9 rounded-md bg-primary-container text-on-primary-container">
-            <Icon name="explore" className="text-xl text-primary" />
+          <div className="flex items-center justify-center w-9 h-9 rounded-md bg-primary-container text-on-primary-container overflow-hidden">
+            <img src={compassImg} alt="Itinerary Planner" className="w-8 h-8 object-contain" />
           </div>
           <div className="flex flex-col">
             <div className="flex items-center gap-2">
@@ -54,7 +42,7 @@ export default function TopNavBar({
         </a>
       </div>
 
-      {/* Middle side: Current Map Title */}
+      {/* Middle: Current Map Title */}
       <div className="hidden md:flex items-center gap-2 px-4 py-1.5 rounded-full bg-surface-container border border-outline-variant max-w-sm truncate">
         <Icon name="map" className="text-body-main text-on-surface-variant" />
         <span className="text-body-sm font-semibold text-on-surface truncate">{mapTitle}</span>

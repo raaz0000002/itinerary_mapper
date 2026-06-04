@@ -189,24 +189,8 @@ html, body, #root {
   border-bottom: 1px solid var(--color-outline-variant);
 }
 
-/* Custom Scale Control Styling */
-.leaflet-control-scale {
-  margin-bottom: 24px !important;
-  margin-right: 180px !important; /* avoid overlapping Zoom controls and sponsor logo on bottomright */
-}
-.leaflet-control-scale-line {
-  background: rgba(255, 255, 255, 0.9) !important;
-  backdrop-filter: blur(8px);
-  border: 1.5px solid var(--color-outline) !important;
-  border-top: none !important;
-  color: var(--color-on-surface) !important;
-  font-family: 'Inter', sans-serif !important;
-  font-size: 10px !important;
-  font-weight: 700 !important;
-  padding: 2px 6px !important;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-  border-radius: 0 0 4px 4px;
-}
+/* Leaflet scale control hidden — replaced by custom React ScaleBar component */
+.leaflet-control-scale { display: none !important; }
 
 /* Custom position of Layers Control to stack directly above zoom controls */
 .leaflet-bottom.leaflet-right .leaflet-control-layers {
