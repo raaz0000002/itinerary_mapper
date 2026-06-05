@@ -264,14 +264,14 @@ export default function LayersPanel({
                 <Icon name="upload_file" className="mb-1 text-2xl text-on-surface-variant group-hover:text-primary transition" />
               )}
               <span className="text-body-main font-semibold text-on-surface">Click to Upload Files</span>
-              <span className="text-body-sm text-on-surface-variant mt-0.5">GeoJSON, Shapefile (ZIP), or CSV</span>
+              <span className="text-body-sm text-on-surface-variant mt-0.5">GeoJSON, KML, Shapefile (ZIP), or CSV</span>
             </div>
             <input
               type="file"
               className="hidden"
               multiple
               onChange={handleFileUpload}
-              accept=".json,.geojson,.zip,.csv"
+              accept=".json,.geojson,.zip,.csv,.kml"
               disabled={isProcessingFile}
             />
           </label>

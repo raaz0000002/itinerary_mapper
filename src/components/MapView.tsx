@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, FormEvent, MouseEvent as ReactMouseEvent, CSSProperties, ReactNode } from 'react';
+import { useEffect, useState, useRef, useMemo, FormEvent, MouseEvent as ReactMouseEvent, CSSProperties, ReactNode } from 'react';
 import {
   MapContainer,
   TileLayer,
@@ -79,6 +79,7 @@ interface MapViewProps {
   layers: MapLayer[];
   itinerary: ItineraryItem[];
   selectedDay: number;
+  setSelectedDay?: (day: number) => void;
   showLegend: boolean;
   showNorthArrow: boolean;
   showScale: boolean;
@@ -200,13 +201,19 @@ const MapControlBar = ({
   setLayersMenuOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
 }) => {
   const map = useMap();
+  const controlRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    if (controlRef.current) {
+      L.DomEvent.disableClickPropagation(controlRef.current);
+      L.DomEvent.disableScrollPropagation(controlRef.current);
+    }
+  }, []);
+
   return (
     <div 
+      ref={controlRef}
       className="absolute bottom-6 right-6 z-[1000] flex items-center gap-3 no-print"
-      onClick={e => e.stopPropagation()}
-      onDoubleClick={e => e.stopPropagation()}
-      onMouseDown={e => e.stopPropagation()}
-      onMouseUp={e => e.stopPropagation()}
     >
       {/* Base Layer Selection Popover */}
       {layersMenuOpen && (
@@ -432,7 +439,15 @@ const Draggable = ({ children, className, style }: DraggableProps) => {
 };
 
 // ─── Elevation profile graph ──────────────────────────────────────────────────
-const ElevationGraph = ({ itinerary }: { itinerary: ItineraryItem[] }) => {
+const ElevationGraph = ({
+  itinerary,
+  tourIndex,
+  isTourPlaying
+}: {
+  itinerary: ItineraryItem[];
+  tourIndex?: number;
+  isTourPlaying?: boolean;
+}) => {
   const sorted = [...itinerary].sort((a, b) => a.day !== b.day ? a.day - b.day : itinerary.indexOf(a) - itinerary.indexOf(b));
   const points = sorted.filter(item => item.elevation !== undefined);
   if (points.length < 2) return (
@@ -445,11 +460,19 @@ const ElevationGraph = ({ itinerary }: { itinerary: ItineraryItem[] }) => {
   const range = maxElev - minElev || 1;
   const W = 200, H = 50, px = 8, py = 6;
 
-  const svgPts = points.map((p, i) => ({
-    x: px + (i / (points.length - 1)) * (W - 2 * px),
-    y: H - py - ((Number(p.elevation ?? 0) - minElev) / range) * (H - 2 * py),
-    name: p.name, elev: p.elevation ?? 0, day: p.day
-  }));
+  const svgPts = points.map((p, i) => {
+    const sortedIdx = sorted.indexOf(p);
+    const isVisited = !isTourPlaying || (tourIndex !== undefined && sortedIdx <= tourIndex);
+    const isCurrent = !!isTourPlaying && tourIndex !== undefined && sortedIdx === tourIndex;
+    
+    return {
+      x: px + (i / (points.length - 1)) * (W - 2 * px),
+      y: H - py - ((Number(p.elevation ?? 0) - minElev) / range) * (H - 2 * py),
+      name: p.name, elev: p.elevation ?? 0, day: p.day,
+      isVisited,
+      isCurrent
+    };
+  });
 
   // Render line segments and area slices between consecutive points
   const segments = [];
@@ -458,12 +481,16 @@ const ElevationGraph = ({ itinerary }: { itinerary: ItineraryItem[] }) => {
     const p2 = svgPts[i + 1];
     const dayColor = getDayColor(p1.day).bg; // use the starting point's day color
     
+    const p2SortedIdx = sorted.indexOf(points[i + 1]);
+    const isSegVisited = !isTourPlaying || (tourIndex !== undefined && p2SortedIdx <= tourIndex);
+
     segments.push({
       x1: p1.x,
       y1: p1.y,
       x2: p2.x,
       y2: p2.y,
       color: dayColor,
+      isSegVisited,
       areaD: `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y} L ${p2.x} ${H - py} L ${p1.x} ${H - py} Z`
     });
   }
@@ -475,16 +502,45 @@ const ElevationGraph = ({ itinerary }: { itinerary: ItineraryItem[] }) => {
       </div>
       <div className="rounded-lg p-1.5 border" style={{ backgroundColor: 'transparent', borderColor: 'rgba(195, 198, 215, 0.4)' }}>
         <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="overflow-visible">
+          {/* Background Silhouette of the entire graph */}
           {segments.map((seg, idx) => (
-            <g key={idx}>
-              {/* Area under segment */}
-              <path d={seg.areaD} fill={seg.color} fillOpacity="0.08" />
-              {/* Line segment */}
-              <line x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2} stroke={seg.color} strokeWidth="2.5" strokeLinecap="round" />
+            <g key={`bg-seg-${idx}`}>
+              <path d={seg.areaD} fill="#cbd5e1" fillOpacity="0.03" />
+              <line x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2} stroke="#cbd5e1" strokeWidth="1.2" strokeDasharray="3, 3" opacity="0.6" />
             </g>
           ))}
+          {/* Active segments drawn progressively */}
+          {segments.map((seg, idx) => {
+            if (!seg.isSegVisited) return null;
+            return (
+              <g key={`active-seg-${idx}`}>
+                {/* Area under segment */}
+                <path d={seg.areaD} fill={seg.color} fillOpacity="0.08" />
+                {/* Line segment */}
+                <line x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2} stroke={seg.color} strokeWidth="2.5" strokeLinecap="round" />
+              </g>
+            );
+          })}
+          {/* Nodes */}
           {svgPts.map((p, i) => {
             const dayColor = getDayColor(p.day).bg;
+            if (!p.isVisited) {
+              return (
+                <circle key={i} cx={p.x} cy={p.y} r="1.5" fill="#cbd5e1" stroke="#fff" strokeWidth="0.5">
+                  <title>{`${p.name}: ${p.elev}m`}</title>
+                </circle>
+              );
+            }
+            if (p.isCurrent) {
+              return (
+                <g key={i}>
+                  <circle cx={p.x} cy={p.y} r="5.5" fill={dayColor} fillOpacity="0.3" className="animate-pulse" />
+                  <circle cx={p.x} cy={p.y} r="3.8" fill={dayColor} stroke="#fff" strokeWidth="1.2">
+                    <title>{`${p.name}: ${p.elev}m (Current)`}</title>
+                  </circle>
+                </g>
+              );
+            }
             return (
               <circle key={i} cx={p.x} cy={p.y} r="2.8" fill={dayColor} stroke="#fff" strokeWidth="0.75">
                 <title>{`${p.name}: ${p.elev}m`}</title>
@@ -699,7 +755,8 @@ const ReadOnlyClusteredPopup = ({ items, dayIndices, startDate }: { items: Itine
 const ItineraryMarker = ({
   items, dayIndices, isStart, isEnd, isCurrentDay, dayNum,
   autoOpen, onSave, onDelete, isReadOnly = false, startDate,
-  customPosition
+  customPosition, setHighlightedStopId, hasOverlaps, isPrinting,
+  highlightedStopId
 }: {
   items: ItineraryItem[]; dayIndices: number[];
   isStart: boolean; isEnd: boolean; isCurrentDay: boolean; dayNum: number;
@@ -709,14 +766,36 @@ const ItineraryMarker = ({
   isReadOnly?: boolean;
   startDate?: string;
   customPosition?: [number, number];
+  setHighlightedStopId: (id: string | null) => void;
+  hasOverlaps: boolean;
+  isPrinting: boolean;
+  highlightedStopId: string | null;
 }) => {
   const markerRef = useRef<L.Marker>(null);
+  
   useEffect(() => {
     if (autoOpen && markerRef.current) setTimeout(() => markerRef.current?.openPopup(), 50);
   }, [autoOpen]);
 
   const firstItem = items[0];
   if (!firstItem) return null;
+
+  // Reactive popup opening/closing based on highlightedStopId
+  useEffect(() => {
+    if (highlightedStopId === firstItem.id && markerRef.current) {
+      const timer = setTimeout(() => {
+        if (markerRef.current && !markerRef.current.isPopupOpen()) {
+          markerRef.current.openPopup();
+        }
+      }, 50);
+      return () => clearTimeout(timer);
+    } else if (highlightedStopId !== firstItem.id && markerRef.current) {
+      if (markerRef.current.isPopupOpen()) {
+        markerRef.current.closePopup();
+      }
+    }
+  }, [highlightedStopId, firstItem.id]);
+
   const isClustered = items.length > 1;
   const tooltipText = items.map((item, idx) => `${dayIndices[idx] + 1}. ${item.name}`).join(' & ');
   const position = customPosition || [firstItem.lat, firstItem.lng];
@@ -728,23 +807,48 @@ const ItineraryMarker = ({
       icon={isClustered
         ? createClusteredMarkerIcon(items, getClusterColor(items), isCurrentDay)
         : createStitchMarkerIcon(firstItem.type, dayIndices[0], isStart, isEnd, dayNum, isCurrentDay)}
-    >
-      <Tooltip permanent direction="top" offset={[0, isClustered ? -28 : -15]} opacity={0.95}>
-        <div className="font-bold text-[10px] text-on-surface leading-tight truncate max-w-[150px]">{tooltipText}</div>
-      </Tooltip>
-      <Popup>
-        {isReadOnly
-          ? isClustered
-            ? <ReadOnlyClusteredPopup items={items} dayIndices={dayIndices} startDate={startDate} />
-            : <ReadOnlyPopup item={firstItem} dayIndex={dayIndices[0]} startDate={startDate} />
-          : isClustered
-            ? <ClusteredPopupEditor items={items} dayIndices={dayIndices} onSave={onSave} onDelete={onDelete}
-                onClose={() => markerRef.current?.closePopup()} startDate={startDate} />
-            : <PopupEditor item={firstItem} dayIndex={dayIndices[0]}
-                onSave={(id, name, elev, dur, type) => { onSave(id, name, elev, dur, type); markerRef.current?.closePopup(); }}
-                onDelete={onDelete} startDate={startDate} />
+      eventHandlers={{
+        click: () => {
+          setHighlightedStopId(firstItem.id);
+        },
+        popupclose: () => {
+          setHighlightedStopId(null);
         }
-      </Popup>
+      }}
+    >
+      {!isPrinting && (
+        <Tooltip 
+          permanent={!hasOverlaps} 
+          direction="top" 
+          offset={[0, isClustered ? -28 : -15]} 
+          opacity={0.95}
+        >
+          <div 
+            className="font-bold text-on-surface leading-tight truncate"
+            style={{
+              fontSize: '10px',
+              maxWidth: '150px'
+            }}
+          >
+            {tooltipText}
+          </div>
+        </Tooltip>
+      )}
+      {!isPrinting && (
+        <Popup>
+          {isReadOnly
+            ? isClustered
+              ? <ReadOnlyClusteredPopup items={items} dayIndices={dayIndices} startDate={startDate} />
+              : <ReadOnlyPopup item={firstItem} dayIndex={dayIndices[0]} startDate={startDate} />
+            : isClustered
+              ? <ClusteredPopupEditor items={items} dayIndices={dayIndices} onSave={onSave} onDelete={onDelete}
+                  onClose={() => markerRef.current?.closePopup()} startDate={startDate} />
+              : <PopupEditor item={firstItem} dayIndex={dayIndices[0]}
+                  onSave={(id, name, elev, dur, type) => { onSave(id, name, elev, dur, type); markerRef.current?.closePopup(); }}
+                  onDelete={onDelete} startDate={startDate} />
+          }
+        </Popup>
+      )}
     </Marker>
   );
 };
@@ -756,7 +860,11 @@ const ClusterGroupRenderer = ({
   onUpdateItineraryItem,
   onDeleteItineraryItem,
   isReadOnly,
-  startDate
+  startDate,
+  setHighlightedStopId,
+  hasOverlaps,
+  isPrinting,
+  highlightedStopId
 }: {
   sortedItinerary: ItineraryItem[];
   selectedDay: number;
@@ -765,6 +873,10 @@ const ClusterGroupRenderer = ({
   onDeleteItineraryItem: MapViewProps['onDeleteItineraryItem'];
   isReadOnly: boolean;
   startDate: string;
+  setHighlightedStopId: (id: string | null) => void;
+  hasOverlaps: boolean;
+  isPrinting: boolean;
+  highlightedStopId: string | null;
 }) => {
   const map = useMap();
   const [mapTrigger, setMapTrigger] = useState(0);
@@ -853,6 +965,10 @@ const ClusterGroupRenderer = ({
           autoOpen={item.id === newlyAddedStopId}
           onSave={onUpdateItineraryItem} onDelete={onDeleteItineraryItem}
           isReadOnly={isReadOnly} startDate={startDate}
+          setHighlightedStopId={setHighlightedStopId}
+          hasOverlaps={hasOverlaps}
+          isPrinting={isPrinting}
+          highlightedStopId={highlightedStopId}
         />
       );
     } else {
@@ -863,24 +979,19 @@ const ClusterGroupRenderer = ({
           position={[c.centerLat, c.centerLng]}
           icon={createClusteredMarkerIcon(c.items, clusterColor, c.isCurrentDay)}
         >
-          <Tooltip direction="top" offset={[0, -20]}>
-            <div className="font-bold text-[10px] text-on-surface">Cluster of {c.items.length} Stops</div>
-          </Tooltip>
+          {!isPrinting && (
+            <Tooltip direction="top" offset={[0, -20]}>
+              <div className="font-bold text-[10px] text-on-surface">Cluster of {c.items.length} Stops</div>
+            </Tooltip>
+          )}
         </Marker>
       );
 
       c.items.forEach((item, idx) => {
         const dayIndex = c.indices[idx];
         const [offsetLat, offsetLng] = getOffsetLatLng(c.centerLat, c.centerLng, idx, c.items.length);
-        const dayColor = getDayColor(item.day).bg;
 
-        elements.push(
-          <Polyline
-            key={`spoke-${item.id}`}
-            positions={[[c.centerLat, c.centerLng], [offsetLat, offsetLng]]}
-            pathOptions={{ color: dayColor, weight: 1.5, dashArray: '2, 4', opacity: 0.8 }}
-          />
-        );
+        // polyline spoke removed as requested
 
         const dayStops = sortedItinerary.filter(x => x.day === item.day);
         const isItemStart = dayIndex === 0;
@@ -894,6 +1005,10 @@ const ClusterGroupRenderer = ({
             onSave={onUpdateItineraryItem} onDelete={onDeleteItineraryItem}
             isReadOnly={isReadOnly} startDate={startDate}
             customPosition={[offsetLat, offsetLng]}
+            setHighlightedStopId={setHighlightedStopId}
+            hasOverlaps={hasOverlaps}
+            isPrinting={isPrinting}
+            highlightedStopId={highlightedStopId}
           />
         );
       });
@@ -903,9 +1018,17 @@ const ClusterGroupRenderer = ({
   return <>{elements}</>;
 };
 
+const MapInstanceGetter = ({ setMap }: { setMap: (map: L.Map) => void }) => {
+  const map = useMap();
+  useEffect(() => {
+    setMap(map);
+  }, [map, setMap]);
+  return null;
+};
+
 // ─── Main MapView export ──────────────────────────────────────────────────────
 export default function MapView({
-  mapTitle, layers, itinerary, selectedDay, showLegend, showNorthArrow, showScale,
+  mapTitle, layers, itinerary, selectedDay, setSelectedDay, showLegend, showNorthArrow, showScale,
   fitBounds, fitBoundsTrigger, isPrinting, isReadOnly = false, mapCenterData,
   handleMapClick, setCurrentExtent, newlyAddedStopId,
   onUpdateItineraryItem, onDeleteItineraryItem, tileUrlSuffix,
@@ -915,10 +1038,83 @@ export default function MapView({
   const [sessionId] = useState(() => Math.random().toString(36).substring(2, 9));
   const sessionTileSuffix = `?session=${sessionId}${tileUrlSuffix ? '&' + tileUrlSuffix.replace(/^\?/, '') : ''}`;
 
+  const sortedItinerary = useMemo(() => {
+    return [...itinerary].sort((a, b) => {
+      if (a.day !== b.day) return a.day - b.day;
+      return itinerary.indexOf(a) - itinerary.indexOf(b);
+    });
+  }, [itinerary]);
+
   const [activeBaseLayer, setActiveBaseLayer] = useState('osm');
   const [layersMenuOpen, setLayersMenuOpen] = useState(false);
   const [measureActive, setMeasureActive] = useState(false);
   const [measurePoints, setMeasurePoints] = useState<L.LatLng[]>([]);
+  const [highlightedStopId, setHighlightedStopId] = useState<string | null>(null);
+  const [glossaryOpen, setGlossaryOpen] = useState(false);
+  const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
+
+  const [clickZoomLevel, setClickZoomLevel] = useState(14);
+  const [isTourPlaying, setIsTourPlaying] = useState(false);
+  const [tourIndex, setTourIndex] = useState(0);
+
+  const visibleItinerary = useMemo(() => {
+    return isTourPlaying ? sortedItinerary.slice(0, tourIndex + 1) : sortedItinerary;
+  }, [isTourPlaying, sortedItinerary, tourIndex]);
+
+  const disablePropagationRef = (node: HTMLElement | null) => {
+    if (node) {
+      L.DomEvent.disableClickPropagation(node);
+      L.DomEvent.disableScrollPropagation(node);
+    }
+  };
+
+  useEffect(() => {
+    if (!isTourPlaying || !mapInstance || sortedItinerary.length === 0) {
+      return;
+    }
+
+    const currentItem = sortedItinerary[tourIndex];
+    if (!currentItem) {
+      setIsTourPlaying(false);
+      setHighlightedStopId(null);
+      return;
+    }
+
+    // 1. Keep highlighted stop null while flying so popup is closed during flight
+    setHighlightedStopId(null);
+    if (setSelectedDay) {
+      setSelectedDay(currentItem.day);
+    }
+
+    // 2. Start flying to the location
+    mapInstance.flyTo([currentItem.lat, currentItem.lng], clickZoomLevel, {
+      duration: 2.0
+    });
+
+    let openPopupTimeout: NodeJS.Timeout | null = null;
+    let nextStepTimeout: NodeJS.Timeout | null = null;
+
+    // 3. Wait for the flight to finish (2000ms), then open popup
+    openPopupTimeout = setTimeout(() => {
+      setHighlightedStopId(currentItem.id);
+
+      // 4. Wait for the reading pause (2500ms), then move to the next stop
+      nextStepTimeout = setTimeout(() => {
+        setHighlightedStopId(null);
+        if (tourIndex < sortedItinerary.length - 1) {
+          setTourIndex(prev => prev + 1);
+        } else {
+          setIsTourPlaying(false);
+        }
+      }, 2500);
+
+    }, 2000);
+
+    return () => {
+      if (openPopupTimeout) clearTimeout(openPopupTimeout);
+      if (nextStepTimeout) clearTimeout(nextStepTimeout);
+    };
+  }, [isTourPlaying, tourIndex, mapInstance, sortedItinerary, clickZoomLevel, setSelectedDay]);
 
   const handleMapClickWrapper = (e: L.LeafletMouseEvent) => {
     if (measureActive) {
@@ -930,10 +1126,6 @@ export default function MapView({
     }
   };
 
-  const sortedItinerary = [...itinerary].sort((a, b) => {
-    if (a.day !== b.day) return a.day - b.day;
-    return itinerary.indexOf(a) - itinerary.indexOf(b);
-  });
 
   // Unique days that have at least one stop
   const activeDays = Array.from(new Set(sortedItinerary.map(i => i.day))).sort((a, b) => a - b);
@@ -967,12 +1159,41 @@ export default function MapView({
 
   const hasElevationData = itinerary.some(item => item.elevation !== undefined);
 
+  const hasOverlaps = (() => {
+    if (!mapInstance) return false;
+    
+    // Group into clusters using the same logic as ClusterGroupRenderer
+    const clusters: Array<{ centerLat: number; centerLng: number; count: number }> = [];
+    sortedItinerary.forEach((item) => {
+      const latLng = L.latLng(item.lat, item.lng);
+      const px = mapInstance.latLngToLayerPoint(latLng);
+      
+      const threshold = 35;
+      let found = false;
+      for (let i = 0; i < clusters.length; i++) {
+        const cLatLng = L.latLng(clusters[i].centerLat, clusters[i].centerLng);
+        const cPx = mapInstance.latLngToLayerPoint(cLatLng);
+        if (cPx.distanceTo(px) < threshold) {
+          clusters[i].count++;
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        clusters.push({ centerLat: item.lat, centerLng: item.lng, count: 1 });
+      }
+    });
+    return clusters.some(c => c.count > 1);
+  })();
+
   return (
     <div className="relative flex-grow h-full bg-surface-dim">
 
       {/* ── Map container ──────────────────────────────────────────────── */}
       <MapContainer id="map-canvas-main" center={[20, 0]} zoom={3}
         scrollWheelZoom={true} className="w-full h-full" zoomControl={false} preferCanvas={true}>
+
+        <MapInstanceGetter setMap={setMapInstance} />
 
         {/* Dynamic Tile Layer */}
         {(() => {
@@ -1004,27 +1225,30 @@ export default function MapView({
         ))}
 
         {/* Per-day colour-coded polylines */}
-        {activeDays.map((day, idx) => {
-          const dayStops = sortedItinerary.filter(i => i.day === day);
-          if (dayStops.length === 0) return null;
-
-          const positions = dayStops.map(i => [i.lat, i.lng] as [number, number]);
-          if (idx < activeDays.length - 1) {
-            const nextDay = activeDays[idx + 1];
-            const nextDayStops = sortedItinerary.filter(i => i.day === nextDay);
-            if (nextDayStops.length > 0) {
-              positions.push([nextDayStops[0].lat, nextDayStops[0].lng]);
+        {(() => {
+          const routeItinerary = isTourPlaying ? visibleItinerary : sortedItinerary;
+          const routeDays = Array.from(new Set(routeItinerary.map(i => i.day))).sort((a, b) => a - b);
+          
+          return routeDays.map((day, idx) => {
+            const dayStops = routeItinerary.filter(i => i.day === day);
+            const positions = dayStops.map(i => [i.lat, i.lng] as [number, number]);
+            if (idx < routeDays.length - 1) {
+              const nextDay = routeDays[idx + 1];
+              const nextDayStops = routeItinerary.filter(i => i.day === nextDay);
+              if (nextDayStops.length > 0) {
+                positions.push([nextDayStops[0].lat, nextDayStops[0].lng]);
+              }
             }
-          }
 
-          if (positions.length < 2) return null;
+            if (positions.length < 2) return null;
 
-          return (
-            <Polyline key={`poly-day-${day}`}
-              {...({ positions, pathOptions: { color: getDayColor(day).bg, weight: 3, dashArray: '5, 8', opacity: 0.85 } } as any)}
-            />
-          );
-        })}
+            return (
+              <Polyline key={`poly-day-${day}`}
+                {...({ positions, pathOptions: { color: getDayColor(day).bg, weight: 3, dashArray: '5, 8', opacity: 0.85 } } as any)}
+              />
+            );
+          });
+        })()}
 
         {/* Distance measurement path & markers */}
         {measurePoints.length > 1 && (
@@ -1064,24 +1288,30 @@ export default function MapView({
 
           return (
             <Marker key={`measure-${idx}`} position={pt} icon={measureIcon} interactive={false}>
-              <Tooltip permanent direction="top" offset={[0, -6]} opacity={0.9} interactive={false}>
-                <span className="text-[9px] font-bold text-rose-700 bg-white/95 backdrop-blur-sm px-1 py-0.5 rounded shadow-sm border border-rose-200/60 select-none pointer-events-none">
-                  {label}
-                </span>
-              </Tooltip>
+              {!isPrinting && (
+                <Tooltip permanent direction="top" offset={[0, -6]} opacity={0.9} interactive={false}>
+                  <span className="text-[9px] font-bold text-rose-700 bg-white/95 backdrop-blur-sm px-1 py-0.5 rounded shadow-sm border border-rose-200/60 select-none pointer-events-none">
+                    {label}
+                  </span>
+                </Tooltip>
+              )}
             </Marker>
           );
         })}
 
         {/* Itinerary markers (cluster-aware) */}
         <ClusterGroupRenderer
-          sortedItinerary={sortedItinerary}
+          sortedItinerary={visibleItinerary}
           selectedDay={selectedDay}
           newlyAddedStopId={newlyAddedStopId}
           onUpdateItineraryItem={onUpdateItineraryItem}
           onDeleteItineraryItem={onDeleteItineraryItem}
           isReadOnly={isReadOnly}
           startDate={startDate}
+          setHighlightedStopId={setHighlightedStopId}
+          hasOverlaps={hasOverlaps}
+          isPrinting={isPrinting}
+          highlightedStopId={highlightedStopId}
         />
 
         {/* Map utility hooks */}
@@ -1106,6 +1336,274 @@ export default function MapView({
         />
       </MapContainer>
 
+      {/* ── Places Glossary Button — top-right next to North Arrow ─────── */}
+      {itinerary.length > 0 && (
+        <div ref={disablePropagationRef} className="absolute top-7 right-[96px] z-[1000] no-print">
+          <button
+            type="button"
+            onClick={() => setGlossaryOpen(prev => !prev)}
+            style={{
+              width: '40px',
+              height: '40px',
+              backgroundColor: glossaryOpen ? '#004ac6' : 'rgba(255, 255, 255, 0.9)',
+              color: glossaryOpen ? '#ffffff' : '#434655',
+              backdropFilter: 'blur(8px)',
+              borderRadius: '50%',
+              border: '1px solid rgba(195, 198, 215, 0.5)',
+              boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+            className="hover:scale-105 active:scale-95"
+            title={glossaryOpen ? "Hide Places Glossary" : "Show Places Glossary"}
+          >
+            <Icon name="menu_book" className="text-xl" />
+          </button>
+        </div>
+      )}
+
+      {/* ── Auto-Play Tour FAB — top-right next to Places Glossary Button ── */}
+      {itinerary.length > 1 && (
+        <div ref={disablePropagationRef} className="absolute top-7 right-[148px] z-[1000] no-print">
+          <button
+            type="button"
+            onClick={() => {
+              if (isTourPlaying) {
+                setIsTourPlaying(false);
+                setHighlightedStopId(null);
+              } else {
+                setTourIndex(0);
+                setIsTourPlaying(true);
+              }
+            }}
+            style={{
+              width: '40px',
+              height: '40px',
+              backgroundColor: isTourPlaying ? '#dc2626' : 'rgba(255, 255, 255, 0.9)',
+              color: isTourPlaying ? '#ffffff' : '#10b981',
+              backdropFilter: 'blur(8px)',
+              borderRadius: '50%',
+              border: '1px solid rgba(195, 198, 215, 0.5)',
+              boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+            className="hover:scale-105 active:scale-95"
+            title={isTourPlaying ? "Stop Tour Animation" : "Play Tour Animation"}
+          >
+            <Icon name={isTourPlaying ? "stop" : "play_arrow"} className="text-xl" />
+          </button>
+        </div>
+      )}
+
+      {/* ── Places Glossary — right side panel (web map toggleable) ────── */}
+      {itinerary.length > 0 && glossaryOpen && (
+        <div 
+          ref={disablePropagationRef}
+          style={{
+            position: 'absolute',
+            top: '80px',
+            right: '24px',
+            bottom: '90px',
+            width: '280px',
+            backgroundColor: 'rgba(255, 255, 255, 0.45)',
+            backdropFilter: 'blur(8px)',
+            padding: '16px',
+            borderRadius: '16px',
+            border: '1px solid rgba(195, 198, 215, 0.5)',
+            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+            fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+            zIndex: 1000,
+            display: 'flex',
+            flexDirection: 'column',
+            maxHeight: 'calc(100% - 170px)',
+            overflow: 'hidden'
+          }}
+          className="select-none no-print animate-in fade-in slide-in-from-right duration-250"
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(195, 198, 215, 0.5)', paddingBottom: '8px', marginBottom: '10px', flexShrink: 0 }}>
+            <h3 style={{ fontSize: '11px', fontWeight: 600, color: '#434655', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Places</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {sortedItinerary.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isTourPlaying) {
+                      setIsTourPlaying(false);
+                    } else {
+                      setTourIndex(0);
+                      setIsTourPlaying(true);
+                    }
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '2px',
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    backgroundColor: isTourPlaying ? '#dc2626' : '#004ac6',
+                    color: '#ffffff',
+                    fontSize: '9px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    border: 'none'
+                  }}
+                  title={isTourPlaying ? "Stop Auto Tour" : "Play Route Tour"}
+                >
+                  <Icon name={isTourPlaying ? "stop" : "play_arrow"} style={{ fontSize: '10px' }} />
+                  <span>{isTourPlaying ? "Stop" : "Tour"}</span>
+                </button>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                <span style={{ fontSize: '9px', color: '#64748b' }}>Zoom:</span>
+                <select
+                  value={clickZoomLevel}
+                  onChange={e => setClickZoomLevel(parseInt(e.target.value, 10))}
+                  style={{ fontSize: '9px', border: '1px solid rgba(195, 198, 215, 0.3)', borderRadius: '3px', padding: '0 2px', backgroundColor: '#fff', color: '#434655', outline: 'none', cursor: 'pointer' }}
+                >
+                  <option value="12">12</option>
+                  <option value="13">13</option>
+                  <option value="14">14</option>
+                  <option value="15">15</option>
+                  <option value="16">16</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', paddingRight: '4px' }} className="space-y-2.5">
+            {sortedItinerary.map((item, idx) => {
+              const dayStops = sortedItinerary.filter(x => x.day === item.day);
+              const stopIndex = dayStops.findIndex(x => x.id === item.id) + 1;
+              const isHighlighted = highlightedStopId === item.id;
+              const dayColor = getDayColor(item.day).bg;
+
+              return (
+                <div 
+                  key={item.id}
+                  onClick={() => {
+                    if (mapInstance) {
+                      mapInstance.flyTo([item.lat, item.lng], clickZoomLevel, { duration: 1.2 });
+                      setHighlightedStopId(item.id);
+                      if (setSelectedDay) {
+                        setSelectedDay(item.day);
+                      }
+                    }
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    backgroundColor: isHighlighted ? 'rgba(255, 255, 255, 0.95)' : 'rgba(255, 255, 255, 0.25)',
+                    border: isHighlighted ? `2px solid ${dayColor}` : '1.5px solid rgba(195, 198, 215, 0.3)',
+                    cursor: 'pointer',
+                    boxShadow: isHighlighted ? '0 4px 6px -1px rgba(0,0,0,0.1)' : 'none',
+                    transition: 'all 0.2s ease'
+                  }}
+                  className="hover:bg-white/80"
+                >
+                  <div 
+                    style={{
+                      width: '20px',
+                      height: '20px',
+                      borderRadius: '50%',
+                      backgroundColor: dayColor,
+                      color: 'white',
+                      fontSize: '10px',
+                      fontWeight: 'bold',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0
+                    }}
+                  >
+                    {stopIndex}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                    <span style={{ fontSize: '11px', fontWeight: 600, color: '#191b23', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.name}
+                    </span>
+                    <span style={{ fontSize: '9px', color: '#64748b' }}>
+                      Day {item.day}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Static Printed Glossary — bottom-middle (only during print) ── */}
+      {isPrinting && itinerary.length > 0 && (() => {
+        const numCols = Math.ceil(sortedItinerary.length / 5);
+        const glossaryWidth = `${numCols * 130 + 24}px`;
+        return (
+          <div 
+            style={{ 
+              position: 'absolute',
+              bottom: '24px', 
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 1000,
+              width: glossaryWidth,
+              backgroundColor: 'rgba(255, 255, 255, 0.45)',
+              backdropFilter: 'blur(8px)',
+              padding: '10px 14px',
+              borderRadius: '12px',
+              border: '1px solid rgba(195, 198, 215, 0.5)',
+              boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+              fontFamily: 'Inter, system-ui, -apple-system, sans-serif'
+            }}
+          >
+            <h3 style={{ fontSize: '10px', fontWeight: 700, color: '#434655', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid rgba(195, 198, 215, 0.3)', paddingBottom: '4px', marginBottom: '6px' }}>Places Glossary</h3>
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: `repeat(${numCols}, 1fr)`,
+              gap: '6px 12px',
+              marginTop: '6px'
+            }}>
+              {sortedItinerary.map((item, idx) => {
+                const dayStops = sortedItinerary.filter(x => x.day === item.day);
+                const stopIndex = dayStops.findIndex(x => x.id === item.id) + 1;
+                const dayColor = getDayColor(item.day).bg;
+                return (
+                  <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                    <div 
+                      style={{ 
+                        width: '14px', 
+                        height: '14px', 
+                        borderRadius: '50%', 
+                        backgroundColor: dayColor, 
+                        color: '#ffffff', 
+                        fontSize: '8px', 
+                        fontWeight: 'bold', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center',
+                        flexShrink: 0
+                      }}
+                    >
+                      {stopIndex}
+                    </div>
+                    <span style={{ fontSize: '9.5px', color: '#191b23', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.name}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── Map title — centered at top ────────────────────────────────── */}
       <div className="absolute top-4 z-[1000] w-full flex justify-center pointer-events-none">
         <div className="pointer-events-auto">
@@ -1121,6 +1619,7 @@ export default function MapView({
       {hasElevationData && (
         <Draggable className="absolute top-4 left-4 z-[1000]">
           <div 
+            ref={disablePropagationRef}
             style={{
               minWidth: '220px', 
               maxWidth: '270px',
@@ -1135,29 +1634,35 @@ export default function MapView({
             className="select-none"
           >
             <h3 style={{ fontSize: '10px', fontWeight: 700, color: '#434655', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Elevation Profile</h3>
-            <ElevationGraph itinerary={itinerary} />
+            <ElevationGraph 
+              itinerary={itinerary} 
+              tourIndex={isTourPlaying ? tourIndex : undefined}
+              isTourPlaying={isTourPlaying}
+            />
           </div>
         </Draggable>
       )}
 
       {/* ── Mobile FAB ─────────────────────────────────────────────────── */}
       {!isReadOnly && !showSidebar && setShowSidebar && (
-        <button onClick={() => setShowSidebar(true)}
+        <button ref={disablePropagationRef} onClick={() => setShowSidebar(true)}
           className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-2 px-5 py-3 bg-primary text-on-primary rounded-full shadow-2xl border border-primary-container font-semibold transition hover:bg-primary/95 active:scale-95 no-print">
           <Icon name="menu" className="text-xl" />
           <span className="text-xs font-bold uppercase tracking-wider">Show Planner</span>
         </button>
       )}
 
-      {/* ── North arrow — top-right ────────────────────────────────────── */}
+      {/* ── North arrow — top-right ──────────────────────────────────── */}
       {showNorthArrow && (
-        <Draggable className="absolute top-4 right-16 z-[1000]">
-          <NorthArrow visible={true} />
+        <Draggable className="absolute top-4 right-6 z-[1000]">
+          <div ref={disablePropagationRef}>
+            <NorthArrow visible={true} />
+          </div>
         </Draggable>
       )}
 
       {/* ── Sponsor logo ───────────────────────────────────────────────── */}
-      <div className="absolute bottom-6 right-[254px] z-[1000] no-print">
+      <div ref={disablePropagationRef} className="absolute bottom-6 right-[254px] z-[1000] no-print">
         <a href="https://www.bidmytrip.ai" target="_blank" rel="noopener noreferrer"
           className="flex items-center justify-center p-1 bg-surface/90 backdrop-blur-md rounded-md border border-outline-variant shadow-lg hover:bg-surface-container-high transition select-none"
           title="Sponsored by BidMyTrip">
@@ -1169,6 +1674,7 @@ export default function MapView({
       {(layers.length > 0 || itinerary.length > 0) && showLegend && (
         <Draggable className="absolute bottom-6 left-6 z-[1000]">
           <div 
+            ref={disablePropagationRef}
             style={{ 
               minWidth: '200px', 
               maxWidth: '260px',
@@ -1211,7 +1717,7 @@ export default function MapView({
               <div style={{ marginTop: layers.length > 0 ? '12px' : '0px', paddingTop: layers.length > 0 ? '10px' : '0px', borderTop: layers.length > 0 ? '1px solid rgba(195, 198, 215, 0.5)' : 'none' }}>
                 <h4 style={{ fontSize: '9px', fontWeight: 700, color: '#434655', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>Day Routes</h4>
                 <div className="space-y-1.5">
-                  {activeDays.map(day => {
+                  {(isTourPlaying ? Array.from(new Set(visibleItinerary.map(i => i.day))).sort((a, b) => a - b) : activeDays).map(day => {
                     const { bg } = getDayColor(day);
                     const dateStr = getDayDateStr(startDate, day);
                     return (
@@ -1232,7 +1738,7 @@ export default function MapView({
               <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid rgba(195, 198, 215, 0.5)' }}>
                 <h4 style={{ fontSize: '9px', fontWeight: 700, color: '#434655', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>Stop Types</h4>
                 <div className="grid grid-cols-2 gap-1.5">
-                  {Array.from(new Set(itinerary.map(i => i.type))).map(type => {
+                  {Array.from(new Set((isTourPlaying ? visibleItinerary : itinerary).map(i => i.type))).map(type => {
                     const label = ({ hotel: 'Hotel', plane: 'Flight', playground: 'Playground', food: 'Dining', view: 'Sightseeing', point: 'Waypoint', hiking: 'Hiking', shopping: 'Shopping' } as any)[type] || type;
                     return (
                       <div key={type} className="flex items-center gap-2">

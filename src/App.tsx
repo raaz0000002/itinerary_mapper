@@ -97,6 +97,143 @@ const transformToOffset = () => {
   };
 };
 
+const parseKML = (kmlText: string): { itineraryItems: any[]; layerData: any | null } => {
+  const parser = new DOMParser();
+  const xmlDoc = parser.parseFromString(kmlText, 'text/xml');
+  const placemarks = xmlDoc.getElementsByTagName('Placemark');
+  
+  const itineraryItems: any[] = [];
+  const geojsonFeatures: any[] = [];
+
+  for (let i = 0; i < placemarks.length; i++) {
+    const pm = placemarks[i];
+    const nameEl = pm.getElementsByTagName('name')[0];
+    const name = nameEl ? nameEl.textContent || '' : `Placemark ${i + 1}`;
+
+    const props: any = { name };
+    const dataNodes = pm.getElementsByTagName('Data');
+    for (let j = 0; j < dataNodes.length; j++) {
+      const d = dataNodes[j];
+      const nameAttr = d.getAttribute('name');
+      const valEl = d.getElementsByTagName('value')[0];
+      if (nameAttr && valEl) {
+        props[nameAttr] = valEl.textContent || '';
+      }
+    }
+    const simpleDataNodes = pm.getElementsByTagName('SimpleData');
+    for (let j = 0; j < simpleDataNodes.length; j++) {
+      const sd = simpleDataNodes[j];
+      const nameAttr = sd.getAttribute('name');
+      if (nameAttr) {
+        props[nameAttr] = sd.textContent || '';
+      }
+    }
+
+    const descEl = pm.getElementsByTagName('description')[0];
+    if (descEl) {
+      props.description = descEl.textContent || '';
+    }
+
+    // Try Point coordinates
+    const pointNodes = pm.getElementsByTagName('Point');
+    if (pointNodes.length > 0) {
+      const coordEl = pointNodes[0].getElementsByTagName('coordinates')[0];
+      if (coordEl && coordEl.textContent) {
+        const parts = coordEl.textContent.trim().split(',');
+        if (parts.length >= 2) {
+          const lng = parseFloat(parts[0]);
+          const lat = parseFloat(parts[1]);
+          const alt = parts[2] ? parseFloat(parts[2]) : undefined;
+
+          if (!isNaN(lat) && !isNaN(lng)) {
+            const dayStr = props.day || props.Day || props.day_num || props.dayNum;
+            const dayVal = dayStr ? parseInt(dayStr, 10) : undefined;
+            const elevStr = props.elevation || props.elevation_m || props.alt || props.altitude || props.elev || alt;
+            const elevVal = elevStr !== undefined ? parseFloat(elevStr) : undefined;
+            const durStr = props.duration || props.duration_hrs || props.dur || props.hours;
+            const durVal = durStr !== undefined ? parseFloat(durStr) : undefined;
+
+            itineraryItems.push({
+              lat,
+              lng,
+              name,
+              day: dayVal && !isNaN(dayVal) ? dayVal : undefined,
+              elevation: elevVal && !isNaN(elevVal) ? elevVal : undefined,
+              duration: durVal && !isNaN(durVal) ? durVal : undefined,
+              type: props.type || 'point'
+            });
+            
+            geojsonFeatures.push({
+              type: 'Feature',
+              properties: props,
+              geometry: {
+                type: 'Point',
+                coordinates: [lng, lat]
+              }
+            });
+            continue;
+          }
+        }
+      }
+    }
+
+    // Handle LineStrings or Polygons
+    const lineNodes = pm.getElementsByTagName('LineString');
+    if (lineNodes.length > 0) {
+      const coordEl = lineNodes[0].getElementsByTagName('coordinates')[0];
+      if (coordEl && coordEl.textContent) {
+        const coordsList = coordEl.textContent.trim().split(/\s+/).map(str => {
+          const parts = str.split(',');
+          return [parseFloat(parts[0]), parseFloat(parts[1])];
+        }).filter(coord => !isNaN(coord[0]) && !isNaN(coord[1]));
+
+        if (coordsList.length > 0) {
+          geojsonFeatures.push({
+            type: 'Feature',
+            properties: props,
+            geometry: {
+              type: 'LineString',
+              coordinates: coordsList
+            }
+          });
+        }
+      }
+    }
+
+    const polyNodes = pm.getElementsByTagName('Polygon');
+    if (polyNodes.length > 0) {
+      const coordEl = polyNodes[0].getElementsByTagName('coordinates')[0];
+      if (coordEl && coordEl.textContent) {
+        const coordsList = coordEl.textContent.trim().split(/\s+/).map(str => {
+          const parts = str.split(',');
+          return [parseFloat(parts[0]), parseFloat(parts[1])];
+        }).filter(coord => !isNaN(coord[0]) && !isNaN(coord[1]));
+
+        if (coordsList.length > 0) {
+          geojsonFeatures.push({
+            type: 'Feature',
+            properties: props,
+            geometry: {
+              type: 'Polygon',
+              coordinates: [coordsList]
+            }
+          });
+        }
+      }
+    }
+  }
+
+  let layerData = null;
+  if (geojsonFeatures.length > 0) {
+    layerData = {
+      type: 'FeatureCollection',
+      features: geojsonFeatures
+    };
+  }
+
+  return { itineraryItems, layerData };
+};
+
 export default function App() {
   // --- States ---
   const [layers, setLayers] = useState<MapLayer[]>([]);
@@ -401,6 +538,7 @@ export default function App() {
       lat: number; 
       lng: number; 
       name?: string; 
+      day?: number;
       elevation?: number; 
       duration?: number; 
       type?: ItineraryItem['type'] 
@@ -410,7 +548,8 @@ export default function App() {
     setItinerary(prev => {
       let currentItinerary = [...prev];
       newItemsData.forEach(itemData => {
-        const dayStops = currentItinerary.filter(item => item.day === selectedDay);
+        const targetDay = itemData.day !== undefined ? Math.min(15, Math.max(1, itemData.day)) : selectedDay;
+        const dayStops = currentItinerary.filter(item => item.day === targetDay);
         let defaultDistance = undefined;
         if (dayStops.length > 0) {
           const prevStop = dayStops[dayStops.length - 1];
@@ -420,7 +559,7 @@ export default function App() {
         const id = generateUniqueId();
         const newItem: ItineraryItem = {
           id,
-          day: selectedDay,
+          day: targetDay,
           name: itemData.name || `Stop ${dayStops.length + 1}`,
           lat: itemData.lat,
           lng: itemData.lng,
@@ -453,6 +592,7 @@ export default function App() {
         lat: number; 
         lng: number; 
         name?: string; 
+        day?: number;
         elevation?: number; 
         duration?: number; 
         type?: ItineraryItem['type'] 
@@ -466,7 +606,6 @@ export default function App() {
           const text = await file.text();
           const data = JSON.parse(text);
           
-          let hasPoints = false;
           const features = data.type === 'FeatureCollection' ? data.features : (data.type === 'Feature' ? [data] : []);
           
           const points = features.filter((f: any) => f.geometry && f.geometry.type === 'Point');
@@ -474,12 +613,19 @@ export default function App() {
             points.forEach((f: any) => {
               const coords = f.geometry.coordinates;
               const props = f.properties || {};
+              
+              const nameVal = props.name || props.place_name || props.title || props.label || props.Place_Name || props.PlaceName;
+              const dayVal = props.day !== undefined ? parseInt(props.day, 10) : (props.Day !== undefined ? parseInt(props.Day, 10) : undefined);
+              const elevProp = props.elevation !== undefined ? props.elevation : (props.elevation_m !== undefined ? props.elevation_m : (props.alt !== undefined ? props.alt : (props.altitude !== undefined ? props.altitude : props.elev)));
+              const durProp = props.duration !== undefined ? props.duration : (props.duration_hrs !== undefined ? props.duration_hrs : (props.dur !== undefined ? props.dur : props.hours));
+
               newItineraryItems.push({
                 lat: coords[1],
                 lng: coords[0],
-                name: props.name,
-                elevation: props.elevation !== undefined ? parseFloat(props.elevation) : undefined,
-                duration: props.duration !== undefined ? parseFloat(props.duration) : undefined,
+                name: nameVal,
+                day: dayVal && !isNaN(dayVal) ? dayVal : undefined,
+                elevation: elevProp !== undefined ? parseFloat(elevProp) : undefined,
+                duration: durProp !== undefined ? parseFloat(durProp) : undefined,
                 type: props.type || 'point'
               });
             });
@@ -489,6 +635,24 @@ export default function App() {
               name: file.name,
               type: 'geojson',
               data,
+              visible: true,
+              color: '#' + Math.floor(Math.random()*16777215).toString(16),
+              opacity: 0.7
+            };
+            newLayersList.push(newLayer);
+          }
+        } else if (extension === 'kml') {
+          const text = await file.text();
+          const { itineraryItems, layerData } = parseKML(text);
+          if (itineraryItems.length > 0) {
+            newItineraryItems.push(...itineraryItems);
+          }
+          if (layerData) {
+            const newLayer: MapLayer = {
+              id: generateUniqueId(),
+              name: file.name,
+              type: 'geojson',
+              data: layerData,
               visible: true,
               color: '#' + Math.floor(Math.random()*16777215).toString(16),
               opacity: 0.7
@@ -511,13 +675,25 @@ export default function App() {
                       const latVal = parseFloat(row[latCol]);
                       const lngVal = parseFloat(row[lngCol]);
                       if (!isNaN(latVal) && !isNaN(lngVal)) {
+                        const findValue = (keys: string[]) => {
+                          const matchedKey = Object.keys(row).find(k => keys.some(key => new RegExp(`^${key}$`, 'i').test(k.trim())));
+                          return matchedKey ? row[matchedKey] : undefined;
+                        };
+                        
+                        const nameVal = findValue(['name', 'place_name', 'place_names', 'title', 'label']);
+                        const dayStr = findValue(['day', 'day_num', 'daynum', 'day_number']);
+                        const dayVal = dayStr ? parseInt(dayStr, 10) : undefined;
+                        const elevVal = findValue(['elevation', 'elevation_m', 'alt', 'altitude', 'elev']);
+                        const durVal = findValue(['duration', 'duration_hrs', 'dur', 'hours']);
+
                         newItineraryItems.push({
                           lat: latVal,
                           lng: lngVal,
-                          name: row.name || row.Name,
-                          elevation: row.elevation !== undefined ? parseFloat(row.elevation) : undefined,
-                          duration: row.duration !== undefined ? parseFloat(row.duration) : undefined,
-                          type: row.type || 'point'
+                          name: nameVal,
+                          day: dayVal && !isNaN(dayVal) ? dayVal : undefined,
+                          elevation: elevVal !== undefined ? parseFloat(elevVal) : undefined,
+                          duration: durVal !== undefined ? parseFloat(durVal) : undefined,
+                          type: row.type || row.Type || 'point'
                         });
                       }
                     });
@@ -702,6 +878,8 @@ export default function App() {
         onExport={handlePrint}
         isReadOnly={isReadOnly}
         onShare={generateShareLink}
+        printConfig={printConfig}
+        setPrintConfig={setPrintConfig}
       />
 
       <div className="flex flex-1 h-full min-h-0 relative">
@@ -796,9 +974,9 @@ export default function App() {
           style={isPrinting ? {
             ...getPrintDimensions(printConfig.orientation),
             position: 'absolute',
-            left: '-9999px',
+            left: '0',
             top: '0',
-            zIndex: -1000
+            zIndex: 100
           } : undefined}
         >
           <MapView
@@ -806,6 +984,7 @@ export default function App() {
             layers={layers}
             itinerary={itinerary}
             selectedDay={selectedDay}
+            setSelectedDay={setSelectedDay}
             showLegend={showLegend}
             showNorthArrow={showNorthArrow}
             showScale={showScale}
